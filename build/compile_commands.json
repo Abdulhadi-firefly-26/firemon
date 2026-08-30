@@ -1,8 +1,0 @@
-[
-{
-  "directory": "/home/Abdulhadi/Desktop/repos/new/build",
-  "command": "/usr/bin/g++ -I/home/Abdulhadi/Desktop/repos/new/include -g -std=gnu++20 -Wall -Wextra -Werror -Wpedantic -o CMakeFiles/firemon.dir/src/main.cpp.o -c /home/Abdulhadi/Desktop/repos/new/src/main.cpp",
-  "file": "/home/Abdulhadi/Desktop/repos/new/src/main.cpp",
-  "output": "/home/Abdulhadi/Desktop/repos/new/build/CMakeFiles/firemon.dir/src/main.cpp.o"
-}
-]
