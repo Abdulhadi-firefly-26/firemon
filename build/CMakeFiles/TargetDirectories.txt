@@ -1,0 +1,3 @@
+/home/Abdulhadi/Desktop/repos/new/build/CMakeFiles/firemon.dir
+/home/Abdulhadi/Desktop/repos/new/build/CMakeFiles/edit_cache.dir
+/home/Abdulhadi/Desktop/repos/new/build/CMakeFiles/rebuild_cache.dir
