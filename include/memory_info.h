@@ -1,33 +1,82 @@
-#include<iostream>
-#include<fstream>
-#include<filesystem>
-#include<iomanip>
+#pragma once
+#include <iostream>
+#include <fstream>
+#include <filesystem>
+#include <iomanip>
+#include <vector>
+#include <string>
+
 using namespace std;
-using namespace filesystem;
+using namespace std::filesystem;
 
-void memory_info(path mem);
-
-void proc_manager(path proc)
+class MemData 
 {
-    for (auto& entry : directory_iterator(proc)) 
-    {
-        if (entry.is_directory()) continue;
-        cout << (entry.is_directory() ? "[DIR] " : "[FILE] ") << entry.path().filename() << "\n";
+private:
+    string name;
+    double value_kb;
+    double value_gb;
 
-    }
-    if (exists(proc/"meminfo"))
+public:
+    MemData() : name(""), value_kb(0.0), value_gb(0.0) {}
+    bool parse_line(const string& line) 
     {
-        memory_info(proc/"meminfo");
+        size_t colon_pos = line.find(':');
+        if (colon_pos == string::npos) 
+        {
+            return false;
+        }
+        name = line.substr(0, colon_pos);
+        string remaining = line.substr(colon_pos + 1);
+        stringstream ss(remaining);        
+        if (ss >> value_kb) 
+        {
+            value_gb = value_kb / (1024.0 * 1024.0);
+            return true;
+        }
+        return false;
     }
-    else cout<<"mem_info_not_present\n";
+    void display() const 
+    {
+        if (name == "MemTotal" || name == "MemFree" || name == "MemAvailable" || name == "Buffers" || name == "Cached" || name == "SwapTotal" || name == "SwapFree") 
+        {
+            cout << "*** " << setw(20) << left << name << setw(10) << right << fixed << setprecision(3) << value_gb << " GB ***\n";
+        }
+    }
+};
+
+void read_memory_info(const path& mem_path) 
+{
+    ifstream fin(mem_path);
+    if (!fin.is_open()) 
+    {
+        cerr << "Error: Could not open " << mem_path << "\n";
+        return;
+    }
+    vector<MemData> memory_list;
+    string line;
+    while (getline(fin, line)) 
+    {
+        MemData data;
+        if (data.parse_line(line)) 
+        {
+            memory_list.push_back(data);
+        }
+    }
+    cout << "\n================ MEMORY INFO ================\n";
+    for (const auto& item : memory_list) 
+    {
+        item.display();
+    }
+    cout << "=============================================\n";
 }
-
-void memory_info(path mem)
+void mem_manager(const path& proc_path) 
 {
-    cout<<mem<<endl;
-    string data;
-    ifstream fin(mem);
-    data.resize(file_size(mem));
-    fin.read(&data[0],data.size());
-    cout<<data<<endl;
+    if (exists(proc_path / "meminfo")) 
+    {
+        read_memory_info(proc_path / "meminfo");
+    } 
+    else 
+    {
+        cout << "Error: meminfo file not present\n";
+    }
 }
