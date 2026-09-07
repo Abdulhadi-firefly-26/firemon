@@ -4,6 +4,7 @@
 #include<cstdlib>
 #include"memory_info.h"
 #include"storage_info.h"
+#include"battery_info.h"
 
 using namespace std;
 using namespace filesystem;
@@ -17,5 +18,6 @@ int main()
 {
     mem_manager(proc);
     storage_manager(proc);
+    battery_manager(root);
     return 0;
 }

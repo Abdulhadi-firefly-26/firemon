@@ -9,7 +9,7 @@
 using namespace std;
 using namespace std::filesystem;
 
-class MemData 
+class mem_info 
 {
 private:
     string name;
@@ -17,7 +17,7 @@ private:
     double value_gb;
 
 public:
-    MemData() : name(""), value_kb(0.0), value_gb(0.0) {}
+    mem_info() : name(""), value_kb(0.0), value_gb(0.0) {}
     bool parse_line(const string& line) 
     {
         size_t colon_pos = line.find(':');
@@ -52,11 +52,11 @@ void read_memory_info(const path& mem_path)
         cerr << "Error: Could not open " << mem_path << "\n";
         return;
     }
-    vector<MemData> memory_list;
+    vector<mem_info> memory_list;
     string line;
     while (getline(fin, line)) 
     {
-        MemData data;
+        mem_info data;
         if (data.parse_line(line)) 
         {
             memory_list.push_back(data);
@@ -67,7 +67,6 @@ void read_memory_info(const path& mem_path)
     {
         item.display();
     }
-    cout << "=============================================\n";
 }
 void mem_manager(const path& proc_path) 
 {

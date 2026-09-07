@@ -9,7 +9,7 @@
 using namespace std;
 using namespace std::filesystem;
 
-class StorageData 
+class storage_data 
 {
 private:
     string device;
@@ -19,7 +19,7 @@ private:
     double free_gb;
     double used_gb; 
 public:
-    StorageData(string dev, string mount, string type) : device(dev), mount_point(mount), fs_type(type)
+    storage_data(string dev, string mount, string type) : device(dev), mount_point(mount), fs_type(type)
     {
         total_gb = 0;
         free_gb = 0;
@@ -61,12 +61,12 @@ void read_storage_info(const path& mounts_path)
         cerr << "Error: Could not open " << mounts_path << "\n";
         return;
     }
-    vector<StorageData> storage_list;
+    vector<storage_data> storage_list;
     string dev, mount, type, dummy;
     while (fin >> dev >> mount >> type)
     {
         getline(fin, dummy);
-        StorageData data(dev, mount, type);
+        storage_data data(dev, mount, type);
         if (data.is_valid_disk())
         {
             data.calculate_space();
@@ -78,7 +78,6 @@ void read_storage_info(const path& mounts_path)
     {
         item.display();
     }
-    cout << "=============================================\n";
 }
 
 void storage_manager(const path& proc_path)
