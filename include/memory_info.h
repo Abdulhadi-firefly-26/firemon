@@ -5,6 +5,7 @@
 #include <iomanip>
 #include <vector>
 #include <string>
+#include <sstream>
 
 using namespace std;
 using namespace std::filesystem;
@@ -15,7 +16,6 @@ private:
     string name;
     double value_kb;
     double value_gb;
-
 public:
     mem_info() : name(""), value_kb(0.0), value_gb(0.0) {}
     bool parse_line(const string& line) 
@@ -39,11 +39,10 @@ public:
     {
         if (name == "MemTotal" || name == "MemFree" || name == "MemAvailable" || name == "Buffers" || name == "Cached" || name == "SwapTotal" || name == "SwapFree") 
         {
-            cout << "*** " << setw(20) << left << name << setw(10) << right << fixed << setprecision(3) << value_gb << " GB ***\n";
+            cout << "*** " << setw(20) << left << name << setw(10) << right << fixed << setprecision(3) << value_gb << " GiB ***\n";
         }
     }
 };
-
 void read_memory_info(const path& mem_path) 
 {
     ifstream fin(mem_path);

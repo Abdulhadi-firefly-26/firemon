@@ -49,10 +49,12 @@ public:
     }
     void display() const
     {
-        cout << "*** " << setw(12) << left << device << setw(12) << left << mount_point << setw(8) << right << fixed << setprecision(1) << total_gb << " GB  | "<< setw(6) << right << used_gb << " GB Used | " << setw(6) << right << free_gb << " GB Free ***\n";
+        cout << "*** " << left << device << "  " << setw(12) << left << mount_point << "  "
+             << setw(8) << right << fixed << setprecision(1) << total_gb << " GiB  | "
+             << setw(6) << right << used_gb << " GiB Used | " << setw(6) << right
+             << free_gb << " GiB Free ***\n";
     }
 };
-
 void read_storage_info(const path& mounts_path)
 {
     ifstream fin(mounts_path);
@@ -79,7 +81,6 @@ void read_storage_info(const path& mounts_path)
         item.display();
     }
 }
-
 void storage_manager(const path& proc_path)
 {
     if (exists(proc_path / "mounts"))

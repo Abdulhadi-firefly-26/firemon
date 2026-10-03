@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <iomanip>
 #include <string>
+#include <cmath>
 
 using namespace std;
 using namespace std::filesystem;
@@ -18,82 +19,106 @@ private:
     double current_a;
     double temp_c;
     bool exists;
-
-public:
-    battery_data()
+    bool status_available;
+    bool capacity_available;
+    bool power_available;
+    bool voltage_available;
+    bool current_available;
+    bool temp_available;
+    static bool read_attribute(const path& bat_path, const string& name, long long& value)
     {
-        status = "Unknown";
-        capacity = 0;
-        power_w = 0.0;
-        voltage_v = 0.0;
-        current_a = 0.0;
-        temp_c = 0.0;
-        exists = false;
+        ifstream input(bat_path / name);
+        return static_cast<bool>(input >> value);
     }
-
-    void read_data(const path& bat_path)
+    void display_measurement(const string& label, double value, int precision, const string& unit, bool available) const
     {
-        ifstream f_status(bat_path / "status");
-        ifstream f_capacity(bat_path / "capacity");
-        ifstream f_power(bat_path / "power_now");
-        ifstream f_voltage(bat_path / "voltage_now");
-        ifstream f_current(bat_path / "current_now");
-        ifstream f_temp(bat_path / "temp");
-
-        if (f_status.is_open() && f_capacity.is_open())
+        cout << "*** " << setw(15) << left << label << setw(9) << right;
+        if (available)
         {
-            exists = true;
-            f_status >> status;
-            f_capacity >> capacity;
-
-            long long raw_val = 0;
-            if (f_power >> raw_val)
+            cout << fixed << setprecision(precision) << value;
+            if (unit == "%")
             {
-                power_w = raw_val / 1000000.0;
+                cout << unit;
             }
-            if (f_voltage >> raw_val)
+            else
             {
-                voltage_v = raw_val / 1000000.0;
-            }
-            if (f_current >> raw_val)
-            {
-                current_a = raw_val / 1000000.0;
-            }
-            if (f_temp >> raw_val)
-            {
-                temp_c = raw_val / 10.0;
+                cout << " " << unit;
             }
         }
+        else
+        {
+            cout << "N/A";
+        }
+        cout << "      ***\n";
     }
 
-    bool has_battery() const
+public:
+    battery_data():status("Unknown"), capacity(0), power_w(0.0), voltage_v(0.0), current_a(0.0), temp_c(0.0), exists(false), status_available(false), capacity_available(false), power_available(false), voltage_available(false), current_available(false), temp_available(false){}
+    void read_data(const path& bat_path)
+    {
+        string type;
+        ifstream f_type(bat_path / "type");
+        if (!(f_type >> type) || type != "Battery")
+        {
+            exists = false;
+            return;
+        }
+        exists = true;
+        ifstream f_status(bat_path / "status");
+        status_available = static_cast<bool>(f_status >> status);
+        ifstream f_capacity(bat_path / "capacity");
+        capacity_available = static_cast<bool>(f_capacity >> capacity);
+        long long raw_value = 0;
+        if (read_attribute(bat_path, "voltage_now", raw_value))
+        {
+            voltage_v = static_cast<double>(raw_value) / 1000000.0;
+            voltage_available = true;
+        }
+        if (read_attribute(bat_path, "current_now", raw_value))
+        {
+            current_a = std::abs(static_cast<double>(raw_value)) / 1000000.0;
+            current_available = true;
+        }
+        if (read_attribute(bat_path, "power_now", raw_value))
+        {
+            power_w = std::abs(static_cast<double>(raw_value)) / 1000000.0;
+            power_available = true;
+        }
+        if ((!power_available || power_w == 0.0) && voltage_available && current_available)
+        {
+            power_w = voltage_v * current_a;
+            power_available = true;
+        }
+        if (read_attribute(bat_path, "temp", raw_value))
+        {
+            temp_c = static_cast<double>(raw_value) / 10.0;
+            temp_available = true;
+        }
+    }
+    bool has_battery() 
     {
         return exists;
     }
-
-    void display() const
+    void display()
     {
         cout << "\n================= BATTERY INFO ================\n";
-        cout << "*** " << setw(15) << left << "Status:" << setw(10) << right << status << "       ***\n";
-        cout << "*** " << setw(15) << left << "Capacity:" << setw(9) << right << capacity << "%      ***\n";
-        cout << "*** " << setw(15) << left << "Power:" << setw(9) << right << fixed << setprecision(1) << power_w << " W      ***\n";
-        cout << "*** " << setw(15) << left << "Voltage:" << setw(9) << right << fixed << setprecision(1) << voltage_v << " V      ***\n";
-        cout << "*** " << setw(15) << left << "Current:" << setw(9) << right << fixed << setprecision(2) << current_a << " A      ***\n";
-        cout << "*** " << setw(15) << left << "Temperature:" << setw(7) << right << fixed << setprecision(0) << temp_c << " C      ***\n";
+        cout << "*** " << setw(15) << left << "Status:" << setw(10) << right << (status_available ? status : "N/A") << "       ***\n";
+        display_measurement("Capacity:", capacity, 0, "%", capacity_available);
+        display_measurement("Power:", power_w, 1, "W", power_available);
+        display_measurement("Voltage:", voltage_v, 1, "V", voltage_available);
+        display_measurement("Current:", current_a, 2, "A", current_available);
+        display_measurement("Temperature:", temp_c, 0, "C", temp_available);
     }
 };
-
 void battery_manager(const path& root_path)
 {
     path sys_power = root_path / "sys/class/power_supply";
     battery_data bat;
-
-    if (exists(sys_power))
+    if (is_directory(sys_power))
     {
         for (const auto& entry : directory_iterator(sys_power))
         {
-            string folder_name = entry.path().filename().string();
-            if (folder_name.rfind("BAT", 0) == 0)
+            if (entry.is_directory())
             {
                 bat.read_data(entry.path());
                 if (bat.has_battery())
@@ -107,4 +132,3 @@ void battery_manager(const path& root_path)
     cout << "\n================= BATTERY INFO ================\n";
     cout << "Error: No internal battery device detected\n";
 }
-
