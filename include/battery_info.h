@@ -5,6 +5,8 @@
 #include <iomanip>
 #include <string>
 #include <cmath>
+#include <sstream>
+#include "tui.h"
 
 using namespace std;
 using namespace std::filesystem;
@@ -18,7 +20,7 @@ private:
     double voltage_v;
     double current_a;
     double temp_c;
-    bool exists;
+    bool bat_exists;
     bool status_available;
     bool capacity_available;
     bool power_available;
@@ -30,40 +32,19 @@ private:
         ifstream input(bat_path / name);
         return static_cast<bool>(input >> value);
     }
-    void display_measurement(const string& label, double value, int precision, const string& unit, bool available) const
-    {
-        cout << "*** " << setw(15) << left << label << setw(9) << right;
-        if (available)
-        {
-            cout << fixed << setprecision(precision) << value;
-            if (unit == "%")
-            {
-                cout << unit;
-            }
-            else
-            {
-                cout << " " << unit;
-            }
-        }
-        else
-        {
-            cout << "N/A";
-        }
-        cout << "      ***\n";
-    }
 
 public:
-    battery_data():status("Unknown"), capacity(0), power_w(0.0), voltage_v(0.0), current_a(0.0), temp_c(0.0), exists(false), status_available(false), capacity_available(false), power_available(false), voltage_available(false), current_available(false), temp_available(false){}
+    battery_data():status("Unknown"), capacity(0), power_w(0.0), voltage_v(0.0), current_a(0.0), temp_c(0.0), bat_exists(false), status_available(false), capacity_available(false), power_available(false), voltage_available(false), current_available(false), temp_available(false){}
     void read_data(const path& bat_path)
     {
         string type;
         ifstream f_type(bat_path / "type");
         if (!(f_type >> type) || type != "Battery")
         {
-            exists = false;
+            bat_exists = false;
             return;
         }
-        exists = true;
+        bat_exists = true;
         ifstream f_status(bat_path / "status");
         status_available = static_cast<bool>(f_status >> status);
         ifstream f_capacity(bat_path / "capacity");
@@ -95,25 +76,34 @@ public:
             temp_available = true;
         }
     }
-    bool has_battery() 
+    bool has_battery() const
     {
-        return exists;
+        return bat_exists;
     }
-    void display()
-    {
-        cout << "\n================= BATTERY INFO ================\n";
-        cout << "*** " << setw(15) << left << "Status:" << setw(10) << right << (status_available ? status : "N/A") << "       ***\n";
-        display_measurement("Capacity:", capacity, 0, "%", capacity_available);
-        display_measurement("Power:", power_w, 1, "W", power_available);
-        display_measurement("Voltage:", voltage_v, 1, "V", voltage_available);
-        display_measurement("Current:", current_a, 2, "A", current_available);
-        display_measurement("Temperature:", temp_c, 0, "C", temp_available);
-    }
+    string get_status() const { return status_available ? status : "N/A"; }
+    int get_capacity() const { return capacity_available ? capacity : -1; }
+    bool has_capacity() const { return capacity_available; }
+    double get_power() const { return power_w; }
+    bool has_power() const { return power_available; }
+    double get_voltage() const { return voltage_v; }
+    bool has_voltage() const { return voltage_available; }
+    double get_current() const { return current_a; }
+    bool has_current() const { return current_available; }
+    double get_temp() const { return temp_c; }
+    bool has_temp() const { return temp_available; }
 };
-void battery_manager(const path& root_path)
+
+inline void render_battery_panel(const path& root_path, int panel_width)
 {
+    using namespace tui;
+    using namespace tui::color;
+
+    draw_panel_top(panel_width, "BATTERY");
+
     path sys_power = root_path / "sys/class/power_supply";
     battery_data bat;
+    bool found = false;
+
     if (is_directory(sys_power))
     {
         for (const auto& entry : directory_iterator(sys_power))
@@ -123,12 +113,89 @@ void battery_manager(const path& root_path)
                 bat.read_data(entry.path());
                 if (bat.has_battery())
                 {
-                    bat.display();
-                    return;
+                    found = true;
+                    break;
                 }
             }
         }
     }
-    cout << "\n================= BATTERY INFO ================\n";
-    cout << "Error: No internal battery device detected\n";
+
+    int content_w = panel_width - 4;
+    int label_w = 14;
+    int value_w = 10;
+
+    if (!found)
+    {
+        string msg = muted() + " ⚡ No internal battery detected" + RESET;
+        int pad_needed = content_w - 31;
+        if (pad_needed < 0) pad_needed = 0;
+        draw_panel_line(panel_width, msg + string(static_cast<size_t>(pad_needed), ' '));
+        draw_panel_bottom(panel_width);
+        return;
+    }
+
+    // Status with icon
+    string status_str = bat.get_status();
+    string status_icon;
+    string status_col;
+    if (status_str == "Charging") {
+        status_icon = "⚡";
+        status_col = success();
+    } else if (status_str == "Discharging") {
+        status_icon = "🔋";
+        status_col = warning();
+    } else if (status_str == "Full") {
+        status_icon = "✓";
+        status_col = success();
+    } else {
+        status_icon = "?";
+        status_col = muted();
+    }
+
+    string status_line = muted() + pad_right("Status", label_w) + RESET + 
+                         BOLD + status_col + pad_left(status_icon + " " + status_str, value_w + 2) + RESET;
+    int status_pad = content_w - label_w - value_w - 2;
+    if (status_pad < 0) status_pad = 0;
+    draw_panel_line(panel_width, status_line + string(static_cast<size_t>(status_pad), ' '));
+
+    // Capacity bar
+    if (bat.has_capacity()) {
+        int cap = bat.get_capacity();
+        double frac = cap / 100.0;
+        int bar_w = content_w - label_w - value_w - 9;
+        if (bar_w < 10) bar_w = 10;
+
+        stringstream val_ss;
+        val_ss << cap << "%";
+        string row = kv_row_bar("Charge", val_ss.str(), frac, label_w, value_w, bar_w, true);
+        draw_panel_line(panel_width, row);
+    }
+
+    draw_panel_separator(panel_width);
+
+    // Detail measurements
+    string detail_pad(static_cast<size_t>(content_w - label_w - value_w), ' ');
+
+    if (bat.has_power()) {
+        stringstream ss;
+        ss << fixed << setprecision(1) << bat.get_power() << " W";
+        draw_panel_line(panel_width, kv_row("Power Draw", ss.str(), label_w, value_w) + detail_pad);
+    }
+    if (bat.has_voltage()) {
+        stringstream ss;
+        ss << fixed << setprecision(2) << bat.get_voltage() << " V";
+        draw_panel_line(panel_width, kv_row("Voltage", ss.str(), label_w, value_w) + detail_pad);
+    }
+    if (bat.has_current()) {
+        stringstream ss;
+        ss << fixed << setprecision(2) << bat.get_current() << " A";
+        draw_panel_line(panel_width, kv_row("Current", ss.str(), label_w, value_w) + detail_pad);
+    }
+    if (bat.has_temp()) {
+        stringstream ss;
+        ss << fixed << setprecision(1) << bat.get_temp() << " °C";
+        draw_panel_line(panel_width, kv_row("Temperature", ss.str(), label_w, value_w) + detail_pad);
+    }
+
+    draw_panel_bottom(panel_width);
 }

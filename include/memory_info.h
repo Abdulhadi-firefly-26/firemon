@@ -6,6 +6,7 @@
 #include <vector>
 #include <string>
 #include <sstream>
+#include "tui.h"
 
 using namespace std;
 using namespace std::filesystem;
@@ -35,46 +36,113 @@ public:
         }
         return false;
     }
-    void display() const 
-    {
-        if (name == "MemTotal" || name == "MemFree" || name == "MemAvailable" || name == "Buffers" || name == "Cached" || name == "SwapTotal" || name == "SwapFree") 
-        {
-            cout << "*** " << setw(20) << left << name << setw(10) << right << fixed << setprecision(3) << value_gb << " GiB ***\n";
-        }
-    }
+    string get_name() const { return name; }
+    double get_kb() const { return value_kb; }
+    double get_gb() const { return value_gb; }
 };
-void read_memory_info(const path& mem_path) 
+
+struct mem_summary {
+    double total_gb = 0;
+    double free_gb = 0;
+    double available_gb = 0;
+    double buffers_gb = 0;
+    double cached_gb = 0;
+    double swap_total_gb = 0;
+    double swap_free_gb = 0;
+    bool has_data = false;
+};
+
+inline mem_summary read_memory_data(const path& mem_path) 
 {
+    mem_summary summary;
     ifstream fin(mem_path);
-    if (!fin.is_open()) 
-    {
-        cerr << "Error: Could not open " << mem_path << "\n";
-        return;
-    }
-    vector<mem_info> memory_list;
+    if (!fin.is_open()) return summary;
+
     string line;
     while (getline(fin, line)) 
     {
         mem_info data;
         if (data.parse_line(line)) 
         {
-            memory_list.push_back(data);
+            if (data.get_name() == "MemTotal")      summary.total_gb = data.get_gb();
+            else if (data.get_name() == "MemFree")   summary.free_gb = data.get_gb();
+            else if (data.get_name() == "MemAvailable") summary.available_gb = data.get_gb();
+            else if (data.get_name() == "Buffers")   summary.buffers_gb = data.get_gb();
+            else if (data.get_name() == "Cached")    summary.cached_gb = data.get_gb();
+            else if (data.get_name() == "SwapTotal") summary.swap_total_gb = data.get_gb();
+            else if (data.get_name() == "SwapFree")  summary.swap_free_gb = data.get_gb();
+            summary.has_data = true;
         }
     }
-    cout << "\n================ MEMORY INFO ================\n";
-    for (const auto& item : memory_list) 
-    {
-        item.display();
-    }
+    return summary;
 }
-void mem_manager(const path& proc_path) 
+
+inline void render_memory_panel(const path& proc_path, int panel_width)
 {
-    if (exists(proc_path / "meminfo")) 
+    using namespace tui;
+    using namespace tui::color;
+
+    tui::draw_panel_top(panel_width, "MEMORY");
+    
+    if (!exists(proc_path / "meminfo"))
     {
-        read_memory_info(proc_path / "meminfo");
-    } 
-    else 
-    {
-        cout << "Error: meminfo file not present\n";
+        draw_panel_line(panel_width, danger() + " ✗ meminfo not found" + RESET + string(static_cast<size_t>(panel_width - 24), ' '));
+        draw_panel_bottom(panel_width);
+        return;
     }
+
+    mem_summary mem = read_memory_data(proc_path / "meminfo");
+    if (!mem.has_data)
+    {
+        draw_panel_line(panel_width, danger() + " ✗ Could not read memory data" + RESET + string(static_cast<size_t>(panel_width - 33), ' '));
+        draw_panel_bottom(panel_width);
+        return;
+    }
+
+    int content_w = panel_width - 4;
+    int label_w = 14;
+    int value_w = 10;
+    int bar_w = content_w - label_w - value_w - 9; // 9 = spacing + pct
+    if (bar_w < 10) bar_w = 10;
+
+    // RAM usage
+    double used_gb = mem.total_gb - mem.available_gb;
+    double ram_frac = (mem.total_gb > 0) ? (used_gb / mem.total_gb) : 0.0;
+
+    stringstream val_ss;
+    val_ss << fixed << setprecision(2) << used_gb << "/" << setprecision(1) << mem.total_gb << " GiB";
+
+    string row = kv_row_bar("RAM Usage", val_ss.str(), ram_frac, label_w, value_w, bar_w);
+    // Pad the row to fill panel width (approximate)
+    draw_panel_line(panel_width, row);
+    
+    // Swap usage
+    double swap_used = mem.swap_total_gb - mem.swap_free_gb;
+    double swap_frac = (mem.swap_total_gb > 0) ? (swap_used / mem.swap_total_gb) : 0.0;
+
+    stringstream swap_ss;
+    if (mem.swap_total_gb > 0) {
+        swap_ss << fixed << setprecision(2) << swap_used << "/" << setprecision(1) << mem.swap_total_gb << " GiB";
+    } else {
+        swap_ss << "N/A";
+    }
+
+    row = kv_row_bar("Swap Usage", swap_ss.str(), swap_frac, label_w, value_w, bar_w);
+    draw_panel_line(panel_width, row);
+    
+    draw_panel_separator(panel_width);
+
+    // Detail rows
+    stringstream buf_ss, cache_ss, free_ss;
+    buf_ss << fixed << setprecision(3) << mem.buffers_gb << " GiB";
+    cache_ss << fixed << setprecision(3) << mem.cached_gb << " GiB";
+    free_ss << fixed << setprecision(3) << mem.free_gb << " GiB";
+
+    string detail_pad(static_cast<size_t>(content_w - label_w - value_w), ' ');
+
+    draw_panel_line(panel_width, kv_row("Buffers", buf_ss.str(), label_w, value_w) + detail_pad);
+    draw_panel_line(panel_width, kv_row("Cached", cache_ss.str(), label_w, value_w) + detail_pad);
+    draw_panel_line(panel_width, kv_row("Free (raw)", free_ss.str(), label_w, value_w) + detail_pad);
+
+    draw_panel_bottom(panel_width);
 }
